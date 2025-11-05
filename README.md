@@ -1,213 +1,194 @@
-# SDN Load Balancer Project
+# ⚡ SDN Load Balancer with Real-Time Dashboard (Mininet + POX Controller)
 
-A complete Software Defined Networking (SDN) load balancer implementation using Mininet and POX controller with real-time visualization dashboard.
+A Software-Defined Networking (SDN) load balancer example using the POX controller and Mininet, with a live web dashboard that visualizes traffic flow, load distribution and performance metrics in real time.
 
-## Features
+---
 
-- **Load Balancing Algorithms**: Round Robin, Least Connections
-- **Real-time Dashboard**: Interactive visualization of traffic and server loads
-- **Traffic Patterns**: Simulates idle, light, medium, heavy, and spike traffic
-- **Network Topology**: 3 backend servers, 3 clients, 1 switch
-- **Monitoring**: Real-time stats and connection logs
+## Table of Contents
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Project Structure](#project-structure)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Execution Steps](#execution-steps)
+- [Dashboard Access](#dashboard-access)
+- [Mininet Commands](#mininet-commands)
+- [API Endpoints](#api-endpoints)
+- [Cautions & Notes](#cautions--notes)
+- [Sample Workflow](#sample-workflow)
+- [Author](#author)
+- [License](#license)
+
+---
+
+## Overview
+This project:
+- Distributes traffic among backend servers using a POX-based load balancer.
+- Exposes runtime stats via a lightweight HTTP API server.
+- Provides a static dashboard (dashboard.html) that polls the API and visualizes metrics and recent requests.
+- Includes Mininet topology and test profiles to simulate traffic (light, medium, heavy, spike).
 
 ## Architecture
+Dashboard → API Server → POX Controller → Mininet Topology
 
-```
-Clients (10.0.0.10-12)
-         |
-         v
-    Load Balancer (10.0.0.100)
-         |
-    +---------+---------+
-    |         |         |
-   S1        S2        S3
-(10.0.0.1) (10.0.0.2) (10.0.0.3)
-```
+      ┌──────────────────────────┐
+      │   Dashboard (HTML/JS)    │
+      │  → http://localhost:8080 │
+      └────────────┬─────────────┘
+                   ▼
+         ┌────────────────────┐
+         │  API Server (Python)│
+         │     api_server.py   │
+         └────────┬────────────┘
+                    ▼
+          ┌─────────────────────┐
+          │   POX Controller    │
+          │  load_balancer.py   │
+          └────────┬────────────┘
+                   ▼
+           ┌──────────────────┐
+           │   Mininet Topo    │
+           │   topology.py     │
+           └──────────────────┘
+
+## Features
+- Round-robin and least-connections strategies (controller)
+- Real-time stats and request log (dashboard)
+- Automated Mininet test profiles: light, medium, heavy, spike
+- Simple HTTP API for stats and updates
+
+## Project Structure
+sdn-loadbalancer/
+- api_server.py        — REST API server (dashboard backend)
+- topology.py          — Mininet topology + test harness
+- dashboard.html       — Static dashboard UI
+- load_balancer.py     — POX controller module (place under ~/pox/pox/misc/)
+
+## Requirements
+- Ubuntu 20.04+ (or similar)
+- Python 3.8+
+- Mininet (2.3+)
+- POX controller
+- Open vSwitch (ovs)
+- curl (optional)
 
 ## Installation
-
-1. Install dependencies:
+1. Clone repo:
 ```bash
-sudo apt-get update
-sudo apt-get install -y mininet python3-pip tmux
-pip3 install requests
+cd ~
+git clone https://github.com/<your-username>/sdn-loadbalancer.git
+cd sdn-loadbalancer
 ```
 
-2. Clone/Download POX:
+2. Install Mininet (if not installed):
+```bash
+sudo apt update
+sudo apt install mininet -y
+```
+
+3. Get POX (if not present):
 ```bash
 cd ~
 git clone https://github.com/noxrepo/pox.git
 ```
 
-3. Setup project:
+4. Copy controller module into POX:
+```bash
+cp ~/sdn-loadbalancer/load_balancer.py ~/pox/pox/misc/
+# ensure file is ~/pox/pox/misc/load_balancer.py
+```
+
+## Execution Steps
+
+1) Start API server (dashboard backend):
 ```bash
 cd ~/sdn-loadbalancer
-chmod +x *.sh
-./setup_project.sh
+python3 api_server.py
+# runs on http://localhost:8080
 ```
 
-## Usage
-
-### Quick Start (Recommended)
-
-Start everything at once using tmux:
+2) Launch POX controller (new terminal):
 ```bash
-./start_all.sh
+cd ~/pox
+./pox.py log.level --DEBUG misc.load_balancer --algorithm=round_robin
+# or --algorithm=least_connections
 ```
 
-Then attach to the session:
+3) Start Mininet topology (new terminal):
 ```bash
-tmux attach -t sdn-lb
+cd ~/sdn-loadbalancer
+sudo python3 topology.py medium
+# profiles: light, medium, heavy, spike, custom <N>
 ```
 
-### Manual Start
+4) Open dashboard:
+- Open file: file:///home/spencer/sdn-loadbalancer/dashboard.html
+- Or check API: http://localhost:8080/stats
 
-1. Start POX Controller (Terminal 1):
-```bash
-./start_controller.sh
+
+
+## Mininet Commands (use in mininet> prompt)
+- pingall
+- ping between clients/servers:
+  client1 ping -c 2 10.0.0.1
+- curl from a client:
+  client1 curl 10.0.0.100
+
+Programmatic test hooks inside topology.py:
+```python
+py run_profile_test(net, "light")
+py run_profile_test(net, "medium")
+py run_profile_test(net, "heavy")
+py run_profile_test(net, "spike")
+py run_profile_test(net, "custom", 300)
 ```
 
-2. Start Mininet Topology (Terminal 2):
-```bash
-./start_topology.sh
-```
+## API Endpoints
+- GET /stats — Return aggregated stats for dashboard
+- POST /update — Controller posts per-request updates (used by POX)
+- POST /reset — Reset statistics
 
-3. Open Dashboard (Browser):
-   - Open the React dashboard artifact
-   - Watch real-time stats
 
-4. Generate Traffic (Terminal 3 or Mininet xterm):
-```bash
-# In Mininet CLI
-mininet> xterm client1
-
-# In the xterm window
-python3 ~/sdn-loadbalancer/traffic_generator.py
-```
-
-### Testing
-
-Quick test from Mininet CLI:
-```bash
-mininet> client1 curl 10.0.0.100
-mininet> client2 curl 10.0.0.100
-mininet> client3 curl 10.0.0.100
-```
-
-Or use the test script:
-```bash
-./test_loadbalancer.sh
-```
-
-## Traffic Patterns
-
-The traffic generator simulates realistic patterns:
-
-- **Idle**: 0-2 RPS (5 seconds)
-- **Light**: 2-5 RPS (10 seconds)
-- **Medium**: 5-15 RPS (15 seconds)
-- **Heavy**: 15-30 RPS (10 seconds)
-- **Spike**: 30-50 RPS (5 seconds)
-
-Generate specific pattern:
-```bash
-python3 traffic_generator.py spike
-python3 traffic_generator.py heavy
-```
-
-## Dashboard Features
-
-- **Real-time Stats**: Total requests, RPS, traffic pattern
-- **Server Visualization**: Live load bars for each server
-- **Traffic History**: 20-second rolling graph
-- **Connection Log**: Recent packet forwarding events
-- **Animated Packets**: Visual representation of traffic flow
-
-## Troubleshooting
-
-### Port Already in Use
-```bash
-sudo netstat -tulpn | grep 6633
-pkill -f pox.py
-```
-
-### Mininet Cleanup
+## Cautions & Notes
+- Start api_server.py before launching POX and Mininet.
+- Use sudo when running topology.py.
+- Ensure port 8080 is free for the API server.
+- If dashboard shows "Disconnected", confirm API server is running and reachable.
+- Clean Mininet state if needed:
 ```bash
 sudo mn -c
 ```
 
-### View All Processes
+## Sample Workflow
+Terminal 1 — API Server:
 ```bash
-tmux attach -t sdn-lb
-# Ctrl+b then 0/1/2 to switch windows
-# Ctrl+b then d to detach
+cd ~/sdn-loadbalancer
+python3 api_server.py
 ```
 
-### Stop Everything
+Terminal 2 — POX Controller:
 ```bash
-tmux kill-session -t sdn-lb
-sudo mn -c
+cd ~/pox
+./pox.py log.level --DEBUG misc.load_balancer --algorithm=round_robin
 ```
 
-## File Structure
-
-```
-~/sdn-loadbalancer/
-├── topology.py              # Mininet network topology
-├── traffic_generator.py     # Traffic simulation
-├── start_controller.sh      # POX startup script
-├── start_topology.sh        # Mininet startup script
-├── start_all.sh            # Start everything with tmux
-├── test_loadbalancer.sh    # Quick test script
-└── README.md               # This file
-
-~/pox/pox/misc/
-└── load_balancer.py        # POX controller code
-```
-
-## Configuration
-
-Edit `~/pox/pox/misc/load_balancer.py` to change:
-- Virtual IP address
-- Server IPs and MACs
-- Load balancing algorithm
-
-Edit `~/sdn-loadbalancer/topology.py` to modify:
-- Network topology
-- Bandwidth and delay
-- Number of servers/clients
-
-## Algorithms
-
-### Round Robin
-Distributes requests evenly across all servers in rotation.
-
-### Least Connections
-Routes to the server with the fewest active connections.
-
-Change algorithm:
+Terminal 3 — Mininet Topology:
 ```bash
-./pox.py misc.load_balancer --algorithm=least_connections
+cd ~/sdn-loadbalancer
+sudo python3 topology.py medium
 ```
 
-## Monitoring
+Open dashboard:
+file:///home/spencer/sdn-loadbalancer/dashboard.html
 
-Watch POX controller logs:
-```bash
-tmux attach -t sdn-lb
-# Switch to controller window (Ctrl+b then 0)
-```
+## Author
+Spencer — B.Tech Final Year Student
 
-Watch Mininet:
-```bash
-tmux attach -t sdn-lb
-# Switch to mininet window (Ctrl+b then 1)
-```
+## License
+MIT License — free to use and modify with attribution.
 
-## Credits
-
-Built with:
-- Mininet - Network emulator
-- POX - OpenFlow controller
-- React - Dashboard UI
+## Tip
+Use Chrome or Edge for best dashboard rendering. To quickly validate API connectivity:
+http://localhost:8080/stats
 
